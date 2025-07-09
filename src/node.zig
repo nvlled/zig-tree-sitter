@@ -140,6 +140,15 @@ pub const Node = extern struct {
         };
     }
 
+    /// Get the raw string contents that this node represents.
+    ///
+    /// `source` must be same string that was passed to parser.parseString().
+    fn raw(self: Node, source: []const u8) []const u8 {
+        const i = @min(self.startByte(), source.len);
+        const j = @min(self.endByte(), source.len);
+        return source[i..j];
+    }
+
     /// Get the node's child at the given index, where zero represents the first
     /// child.
     ///
@@ -368,6 +377,30 @@ pub const Node = extern struct {
         ts_current_free(@ptrCast(@constCast(sexp)));
     }
 
+    /// Creates a JSON representation of the node and writes the output to w.
+    /// To get a string instead, use `Node.toJSON()`.
+    ///
+    /// If `source` is provided, then the `raw` fields are shown for the named leaf nodes.
+    /// The `source` must be same string that was passed to parser.parseString().
+    /// See also `Node.raw()`.
+    pub fn writeJSON(self: Node, w: std.io.AnyWriter, options: struct {
+        source: ?[]const u8 = null,
+    }) !void {
+        try Json.writeJSON(.{ .source = options.source orelse "" }, self, w);
+    }
+
+    /// Get JSON string representation of the node.
+    /// See also `Node.writeJSON()`.
+    ///
+    /// Note: Caller must free the returned string.
+    pub fn toJSON(self: Node, allocator: Allocator, options: struct {
+        source: ?[]const u8 = null,
+    }) ![]const u8 {
+        var buf = std.ArrayList(u8).init(allocator);
+        try Json.writeJSON(.{ .source = options.source }, self, buf.writer().any());
+        return buf.toOwnedSlice();
+    }
+
     /// Create a new `TreeCursor` starting from this node.
     ///
     /// Note that the given node is considered the root of the cursor,
@@ -412,6 +445,201 @@ pub const Node = extern struct {
     fn orNull(self: Node) ?Node {
         return if (!ts_node_is_null(self)) self else null;
     }
+
+    /// This module is used internally for Node.writeJSON.
+    ///
+    /// Json.writeJSON creates a readable JSON string representation of the node,
+    /// primarily intended to be read by humans, so it uses a less optimal JSON structure.
+    /// The JSON output should serve as a reference on how to
+    /// traverse or navigate the constructed node tree.
+    ///
+    /// There's also s-exp representation of the node, but it's not very readable
+    /// by default and omits the unnamed nodes.
+    ///
+    /// For comparison, consider the following code:
+    /// ```
+    /// int x = /*comment*/ 100;
+    /// ```
+    ///
+    /// `Node.toSexp()` would show the following:
+    /// ```
+    /// (declaration type: (primitive_type) declarator: (init_declarator declarator: (identifier) value: (number_literal)))
+    /// ```
+    ///
+    /// In contrast `Node.toJSON()` would show the following:
+    /// JSON output:
+    /// ```
+    /// {
+    ///     "kind_id": "198",
+    ///     "kind": "declaration",
+    ///     "0": {
+    ///         "field": "type",
+    ///         "kind_id": "93",
+    ///         "kind": "primitive_type",
+    ///         "raw": "int"
+    ///     },
+    ///     "1": {
+    ///         "field": "declarator",
+    ///         "kind_id": "240",
+    ///         "kind": "init_declarator",
+    ///         "0": {
+    ///             "field": "declarator",
+    ///             "kind_id": "1",
+    ///             "kind": "identifier",
+    ///             "raw": "x"
+    ///         },
+    ///         "1": "=",
+    ///         "2": {
+    ///             "kind_id": "160",
+    ///             "kind": "comment",
+    ///             "raw": "/*comment*/"
+    ///         },
+    ///         "3": {
+    ///             "field": "value",
+    ///             "kind_id": "141",
+    ///             "kind": "number_literal",
+    ///             "raw": "100"
+    ///         }
+    ///     },
+    ///     "2": ";"
+    /// }
+    /// ```
+    const Json = struct {
+        /// This is the same string that was passed to parser.parseString().
+        /// Used to get the raw string contents of a node. For instance,
+        /// For comment nodes, it would return the actual comment text.
+        source: ?[]const u8 = null,
+        // Ideally source could be taken directly from the Node or Tree,
+        // but from the looks of it, tree-sitter doesn't store that
+        // data anywhere, or at least it didn't make it part of the public API.
+
+        const Self = @This();
+
+        pub fn writeJSON(self: Self, node: Node, w: std.io.AnyWriter) !void {
+            return doWriteJSON(self, node, w, null, 1);
+        }
+
+        pub fn doWriteJSON(
+            self: Self,
+            node: Node,
+            w: std.io.AnyWriter,
+            field_name: ?[]const u8,
+            level: usize,
+        ) !void {
+            // a wrapper writer that escapes characters that could break JSON
+            const mw = CharMapWriter.create(w, escapeChars);
+
+            try w.writeAll("{\n");
+            if (field_name) |name| {
+                try writeIndent(w, level);
+                try w.print("\"field\": \"{s}\",\n", .{name});
+            }
+
+            try writeIndent(w, level);
+            try w.print("\"kind_id\": \"{d}\",\n", .{node.kindId()});
+            try writeIndent(w, level);
+            try w.print("\"kind\": \"{s}\",\n", .{node.kind()});
+
+            if (node.childCount() == 0 and self.source != null) {
+                // show raw string of leaf nodes
+                try writeIndent(w, level);
+                try w.writeAll("\"raw\": \"");
+
+                try mw.writeAll(raw(
+                    node,
+                    self.source.?,
+                ));
+
+                try w.writeAll("\"\n");
+            }
+
+            var current_child: ?Node = node.child(0);
+            var i: u32 = 0;
+            while (current_child != null) : (i += 1) {
+                const c = current_child orelse break;
+                if (!c.isNamed()) {
+                    try writeIndent(w, level);
+                    try w.print("\"{d}\"", .{i});
+                    try w.writeAll(": \"");
+                    try mw.writeAll(c.kind());
+                    try w.writeAll("\"");
+                } else {
+                    const name = node.fieldNameForChild(i);
+                    try writeIndent(w, level);
+                    try w.print("\"{d}\": ", .{i});
+                    try doWriteJSON(self, c, w, name, level + 1);
+                }
+                current_child = c.nextSibling();
+                if (current_child != null) {
+                    try w.writeAll(",\n");
+                } else {
+                    try w.writeAll("\n");
+                }
+            }
+
+            try writeIndent(w, level - 1);
+            try w.writeAll("}");
+        }
+
+        fn escapeChars(ch: u8) []const u8 {
+            return switch (ch) {
+                '"' => "\\\"",
+                '\\' => "\\\\",
+                '\t' => "\\t",
+                '\n' => "\\n",
+                0x8 => "\\b",
+                0xC => "\\f",
+                0xD => "\\r",
+                else => &.{ch},
+            };
+        }
+
+        inline fn writeIndent(w: std.io.AnyWriter, level: usize) !void {
+            try w.writeByteNTimes(' ', level * 4);
+        }
+    };
+
+    /// A writer wrapper that converts written characters to another.
+    /// Used to escape or prepend certain characters with a backslash.
+    ///
+    /// Example: convert all " to \" that is written to w
+    ///   const mapper = struct {
+    ///       fn _(ch: u8) []const u8 {
+    ///           return switch (ch) {
+    ///               '"' => "\\\"",
+    ///               '\\' => "\\\\",
+    ///               else => &.{ch},
+    ///           };
+    ///       }
+    ///   }._;
+    ///   try EscapedWriter.create(w, mapper).writeAll(child.kind());
+    const CharMapWriter = struct {
+        const Self = @This();
+        const Writer = std.io.GenericWriter(Self, anyerror, write);
+
+        w: std.io.AnyWriter,
+        charMap: *const fn (ch: u8) []const u8,
+
+        fn write(self: Self, bytes: []const u8) anyerror!usize {
+            for (bytes) |ch| {
+                try self.w.writeAll(self.charMap(ch));
+            }
+
+            // Returning a number > bytes.len causes a panic,
+            // so just return bytes.len, even though one or more added \ characters
+            // were written.
+            return bytes.len;
+        }
+
+        pub fn writer(self: Self) Writer {
+            return .{ .context = self };
+        }
+
+        pub fn create(w: std.io.AnyWriter, f: *const fn (u8) []const u8) Writer {
+            const self = Self{ .w = w, .charMap = f };
+            return .{ .context = self };
+        }
+    };
 };
 
 extern var ts_current_free: *const fn ([*]u8) callconv(.C) void;

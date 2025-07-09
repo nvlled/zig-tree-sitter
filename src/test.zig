@@ -306,6 +306,110 @@ test "Node" {
     try testing.expect(!node.hasError());
 }
 
+test "Node to JSON" {
+    const allocator = std.testing.allocator;
+
+    const language = tree_sitter_c();
+    defer language.destroy();
+
+    const parser = ts.Parser.create();
+    defer parser.destroy();
+    try parser.setLanguage(language);
+
+    const source = "for(int x = 0; x < 5; x++) { }";
+
+    const tree = parser.parseStringEncoding(source, null, .UTF_8).?;
+    defer tree.destroy();
+    const root_node = tree.rootNode();
+    const forloop = root_node.child(0) orelse @panic("expected a for-loop node");
+
+    var cursor = root_node.walk();
+    defer cursor.destroy();
+
+    const json = try forloop.toJSON(allocator, .{ .source = source });
+    defer allocator.free(json);
+
+    const expected =
+        \\{
+        \\    "kind_id": "273",
+        \\    "kind": "for_statement",
+        \\    "0": "for",
+        \\    "1": "(",
+        \\    "2": {
+        \\        "field": "initializer",
+        \\        "kind_id": "198",
+        \\        "kind": "declaration",
+        \\        "0": {
+        \\            "field": "type",
+        \\            "kind_id": "93",
+        \\            "kind": "primitive_type",
+        \\            "raw": "int"
+        \\        },
+        \\        "1": {
+        \\            "field": "declarator",
+        \\            "kind_id": "240",
+        \\            "kind": "init_declarator",
+        \\            "0": {
+        \\                "field": "declarator",
+        \\                "kind_id": "1",
+        \\                "kind": "identifier",
+        \\                "raw": "x"
+        \\            },
+        \\            "1": "=",
+        \\            "2": {
+        \\                "field": "value",
+        \\                "kind_id": "141",
+        \\                "kind": "number_literal",
+        \\                "raw": "0"
+        \\            }
+        \\        },
+        \\        "2": ";"
+        \\    },
+        \\    "3": {
+        \\        "field": "condition",
+        \\        "kind_id": "290",
+        \\        "kind": "binary_expression",
+        \\        "0": {
+        \\            "field": "left",
+        \\            "kind_id": "1",
+        \\            "kind": "identifier",
+        \\            "raw": "x"
+        \\        },
+        \\        "1": "<",
+        \\        "2": {
+        \\            "field": "right",
+        \\            "kind_id": "141",
+        \\            "kind": "number_literal",
+        \\            "raw": "5"
+        \\        }
+        \\    },
+        \\    "4": ";",
+        \\    "5": {
+        \\        "field": "update",
+        \\        "kind_id": "291",
+        \\        "kind": "update_expression",
+        \\        "0": {
+        \\            "field": "argument",
+        \\            "kind_id": "1",
+        \\            "kind": "identifier",
+        \\            "raw": "x"
+        \\        },
+        \\        "1": "++"
+        \\    },
+        \\    "6": ")",
+        \\    "7": {
+        \\        "field": "body",
+        \\        "kind_id": "241",
+        \\        "kind": "compound_statement",
+        \\        "0": "{",
+        \\        "1": "}"
+        \\    }
+        \\}
+    ;
+
+    try std.testing.expectEqualStrings(expected, json);
+}
+
 test "Query" {
     const language = tree_sitter_c();
     defer language.destroy();
