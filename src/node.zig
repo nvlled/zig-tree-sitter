@@ -143,7 +143,7 @@ pub const Node = extern struct {
     /// Get the raw string contents that this node represents.
     ///
     /// `source` must be same string that was passed to parser.parseString().
-    fn raw(self: Node, source: []const u8) []const u8 {
+    pub fn raw(self: Node, source: []const u8) []const u8 {
         const i = @min(self.startByte(), source.len);
         const j = @min(self.endByte(), source.len);
         return source[i..j];
