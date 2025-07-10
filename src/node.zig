@@ -386,7 +386,7 @@ pub const Node = extern struct {
     pub fn writeJSON(self: Node, w: std.io.AnyWriter, options: struct {
         source: ?[]const u8 = null,
     }) !void {
-        try Json.writeJSON(.{ .source = options.source orelse "" }, self, w);
+        try Json.writeJSON(.{ .source = options.source }, self, w);
     }
 
     /// Get JSON string representation of the node.
