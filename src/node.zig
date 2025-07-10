@@ -446,15 +446,19 @@ pub const Node = extern struct {
         return if (!ts_node_is_null(self)) self else null;
     }
 
-    /// This module is used internally for Node.writeJSON.
+    /// Json namespace contains functions used internally for Node.writeJSON.
+    ///
+    /// ## Purpose and comparison
     ///
     /// Json.writeJSON creates a readable JSON string representation of the node,
     /// primarily intended to be read by humans, so it uses a less optimal JSON structure.
     /// The JSON output should serve as a reference on how to
     /// traverse or navigate the constructed node tree.
     ///
-    /// There's also s-exp representation of the node, but it's not very readable
+    /// Tree-sitter can also output a sexp, but it's not very human readable
     /// by default and omits the unnamed nodes.
+    /// Likewise, tree-sitter can also output SVG with dot graphs which
+    /// which is more readable than the sexp, but still omits some details.
     ///
     /// For comparison, consider the following code:
     /// ```
@@ -504,6 +508,29 @@ pub const Node = extern struct {
     ///     "2": ";"
     /// }
     /// ```
+    ///
+    /// ## JSON structure description
+    ///
+    /// - named nodes are objects: {kind_id: ...}
+    ///
+    /// - unnamed nodes are strings, for example
+    ///   in the above, the unnamed nodes are:
+    ///     - "1": "="
+    ///     - "2": ";"
+    ///   the value is the node kind, for example: ";" == node.kind()
+    ///
+    /// - values with number keys are child of a node,
+    ///   for example in the above, the root node's children are:
+    ///     - "0": { ... },
+    ///     - "1": { ... },
+    ///     - "2": ";"
+    ///   the number represents the child_index
+    ///
+    /// - non-number keys are properties of the node:
+    ///     - "kind"    -> value is node.kind()
+    ///     - "kind_id" -> value is node.kind_id()
+    ///     - "raw"     -> value is node.raw()
+    ///     - "field"   -> value is parent_node.fieldNameForChild(child_index)
     const Json = struct {
         /// This is the same string that was passed to parser.parseString().
         /// Used to get the raw string contents of a node. For instance,
