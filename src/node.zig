@@ -415,6 +415,10 @@ pub const Node = extern struct {
     ///
     /// Note: Call `ChildIterator.reset()` before reusing the iterator for another loop.
     ///
+    /// If the children will be recursively traversed, consider using TreeCursor instead.
+    ///
+    /// See also `Node.children()` and `Node.walk()`.
+    ///
     /// Example usage:
     /// ```
     /// var iterator = node.iterateChildren();
@@ -572,22 +576,24 @@ pub const Node = extern struct {
         const Self = @This();
 
         pub fn writeJSON(self: Self, node: Node, w: std.io.AnyWriter) !void {
-            try doWriteJSON(self, node, w, null, 1);
+            var cursor = node.walk();
+            try doWriteJSON(self, w, &cursor);
             try w.writeAll("\n");
         }
 
         pub fn doWriteJSON(
             self: Self,
-            node: Node,
             w: std.io.AnyWriter,
-            field_name: ?[]const u8,
-            level: usize,
+            cursor: *TreeCursor,
         ) !void {
             // a wrapper writer that escapes characters that could break JSON
             const mw = CharMapWriter.create(w, escapeChars);
 
+            const node = cursor.node();
+            const level = cursor.depth() + 1;
+
             try w.writeAll("{\n");
-            if (field_name) |name| {
+            if (cursor.fieldName()) |name| {
                 try writeIndent(w, level);
                 try w.print("\"field\": \"{s}\",\n", .{name});
             }
@@ -610,31 +616,32 @@ pub const Node = extern struct {
                 try w.writeAll("\"\n");
             }
 
-            var iter = node.iterateChildren();
-            defer iter.destroy();
+            if (cursor.gotoFirstChild()) {
+                var i: u32 = 0;
+                while (true) {
+                    const c = cursor.node();
+                    if (!c.isNamed()) {
+                        try writeIndent(w, level);
+                        try w.print("\"{d}\"", .{i});
+                        try w.writeAll(": \"");
+                        try mw.writeAll(c.kind());
+                        try w.writeAll("\"");
+                    } else {
+                        try writeIndent(w, level);
+                        try w.print("\"{d}\": ", .{i});
+                        try doWriteJSON(self, w, cursor);
+                    }
 
-            var i: u32 = 0;
-            while (iter.next()) |c| {
-                if (!c.isNamed()) {
-                    try writeIndent(w, level);
-                    try w.print("\"{d}\"", .{i});
-                    try w.writeAll(": \"");
-                    try mw.writeAll(c.kind());
-                    try w.writeAll("\"");
-                } else {
-                    const name = iter.fieldName();
-                    try writeIndent(w, level);
-                    try w.print("\"{d}\": ", .{i});
-                    try doWriteJSON(self, c, w, name, level + 1);
+                    if (cursor.gotoNextSibling()) {
+                        try w.writeAll(",\n");
+                    } else {
+                        try w.writeAll("\n");
+                        break;
+                    }
+
+                    i += 1;
                 }
-
-                if (c.nextSibling() != null) {
-                    try w.writeAll(",\n");
-                } else {
-                    try w.writeAll("\n");
-                }
-
-                i += 1;
+                _ = cursor.gotoParent();
             }
 
             try writeIndent(w, level - 1);

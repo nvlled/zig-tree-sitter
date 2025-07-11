@@ -319,7 +319,6 @@ test "Node children iteration" {
     const root_node = tree.rootNode();
     const forloop = root_node.child(0) orelse @panic("expected a for-loop node");
 
-    try forloop.writeJSON(std.io.getStdErr().writer().any(), .{});
     var iter = forloop.iterateChildren();
     defer iter.destroy();
 
