@@ -219,6 +219,64 @@ test "TreeCursor children" {
     try std.testing.expectEqual(1, init_children.items.len);
 }
 
+test "Node children iteration" {
+    const language = tree_sitter_c();
+    defer language.destroy();
+
+    const parser = ts.Parser.create();
+    defer parser.destroy();
+    try parser.setLanguage(language);
+
+    const tree = parser.parseStringEncoding("for (int x = 0; x < 5; x++) {}", null, .UTF_8).?;
+    defer tree.destroy();
+    const root_node = tree.rootNode();
+    const forloop = root_node.child(0) orelse @panic("expected a for-loop node");
+
+    try forloop.writeJSON(std.io.getStdErr().writer().any(), .{});
+    var iter = forloop.iterateChildren();
+    defer iter.destroy();
+
+    var count: usize = 0;
+    while (iter.next()) |_| {
+        count += 1;
+    }
+    try std.testing.expectEqual(forloop.childCount(), count);
+
+    count = 0;
+    iter.reset();
+    while (iter.nextNamed()) |_| {
+        count += 1;
+    }
+    try std.testing.expectEqual(forloop.namedChildCount(), count);
+
+    count = 0;
+    iter.reset();
+    while (iter.previousNamed()) |_| {
+        count += 1;
+    }
+    try std.testing.expectEqual(forloop.namedChildCount(), count);
+
+    iter.reset();
+    try std.testing.expectEqualStrings("for", iter.next().?.kind());
+    try std.testing.expectEqualStrings("(", iter.next().?.kind());
+    try std.testing.expectEqualStrings("declaration", iter.next().?.kind());
+    try std.testing.expectEqualStrings("binary_expression", iter.next().?.kind());
+    try std.testing.expectEqualStrings(";", iter.next().?.kind());
+    try std.testing.expectEqualStrings("update_expression", iter.next().?.kind());
+    try std.testing.expectEqualStrings(")", iter.next().?.kind());
+    try std.testing.expectEqualStrings("compound_statement", iter.next().?.kind());
+    try std.testing.expectEqual(null, iter.next());
+    try std.testing.expectEqual(null, iter.next());
+
+    iter.reset();
+    try std.testing.expectEqualStrings("compound_statement", iter.previousNamed().?.kind());
+    try std.testing.expectEqualStrings("update_expression", iter.previousNamed().?.kind());
+    try std.testing.expectEqualStrings("binary_expression", iter.previousNamed().?.kind());
+    try std.testing.expectEqualStrings("declaration", iter.previousNamed().?.kind());
+    try std.testing.expectEqual(null, iter.previousNamed());
+    try std.testing.expectEqual(null, iter.previous());
+}
+
 test "Node" {
     const language = tree_sitter_c();
     defer language.destroy();

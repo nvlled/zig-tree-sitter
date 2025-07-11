@@ -409,6 +409,35 @@ pub const Node = extern struct {
         return ts_tree_cursor_new(self);
     }
 
+    /// Creates an iterator for the children of the current node.
+    ///
+    /// Caller should destroy the iterator if no longer needed.
+    ///
+    /// Note: Call `ChildIterator.reset()` before reusing the iterator for another loop.
+    ///
+    /// Example usage:
+    /// ```
+    /// var iterator = node.iterateChildren();
+    /// defer iterator.destroy();
+    /// while (iterator.next()) |child| { ... }
+    /// ```
+    ///
+    /// Example without iterator:
+    /// ```
+    /// var cursor = node.walk();
+    /// defer cursor.destroy();
+    /// if (cursor.gotoFirstChild()) {
+    ///     while (true) {
+    ///         const child = cursor.node();
+    ///         ...
+    ///         if (!cursor.nextSibling()) break;
+    ///     }
+    /// }
+    /// ```
+    pub fn iterateChildren(self: Node) TreeCursor.ChildIterator {
+        return .{ .cursor = self.walk() };
+    }
+
     /// Edit this node to keep it in-sync with source code that has been edited.
     ///
     /// This function is only rarely needed. When you edit a syntax tree with
@@ -580,10 +609,11 @@ pub const Node = extern struct {
                 try w.writeAll("\"\n");
             }
 
-            var current_child: ?Node = node.child(0);
+            var iter = node.iterateChildren();
+            defer iter.destroy();
+
             var i: u32 = 0;
-            while (current_child != null) : (i += 1) {
-                const c = current_child orelse break;
+            while (iter.next()) |c| {
                 if (!c.isNamed()) {
                     try writeIndent(w, level);
                     try w.print("\"{d}\"", .{i});
@@ -591,17 +621,19 @@ pub const Node = extern struct {
                     try mw.writeAll(c.kind());
                     try w.writeAll("\"");
                 } else {
-                    const name = node.fieldNameForChild(i);
+                    const name = iter.fieldName();
                     try writeIndent(w, level);
                     try w.print("\"{d}\": ", .{i});
                     try doWriteJSON(self, c, w, name, level + 1);
                 }
-                current_child = c.nextSibling();
-                if (current_child != null) {
+
+                if (c.nextSibling() != null) {
                     try w.writeAll(",\n");
                 } else {
                     try w.writeAll("\n");
                 }
+
+                i += 1;
             }
 
             try writeIndent(w, level - 1);

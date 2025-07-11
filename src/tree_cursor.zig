@@ -142,6 +142,167 @@ pub const TreeCursor = extern struct {
     pub fn resetTo(self: *TreeCursor, other: *const TreeCursor) void {
         ts_tree_cursor_reset_to(self, other);
     }
+
+    /// Get the first child of the current node.
+    /// Moves the cursor to that child if found.
+    ///
+    /// See also `TreeCursor.gotoFirstChild`.
+    pub fn firstChild(self: *TreeCursor) ?Node {
+        return switch (ts_tree_cursor_goto_first_child(self)) {
+            true => ts_tree_cursor_current_node(self),
+            false => null,
+        };
+    }
+
+    /// Get the last child of the current node.
+    /// Moves the cursor to that child if found.
+    ///
+    /// See also `TreeCursor.gotoLastChild`.
+    pub fn lastChild(self: *TreeCursor) ?Node {
+        return switch (ts_tree_cursor_goto_last_child(self)) {
+            true => ts_tree_cursor_current_node(self),
+            false => null,
+        };
+    }
+
+    /// Get the next sibling of the current node.
+    /// Moves the cursor to that sibling if found.
+    ///
+    /// See also `TreeCursor.gotoNextSibling`.
+    pub fn nextSibling(self: *TreeCursor) ?Node {
+        return switch (ts_tree_cursor_goto_next_sibling(self)) {
+            true => ts_tree_cursor_current_node(self),
+            false => null,
+        };
+    }
+
+    /// Get the previous sibling of the current node.
+    /// Moves the cursor to that sibling if found.
+    ///
+    /// See also `TreeCursor.gotoPreviousSibling`.
+    pub fn previousSibling(self: *TreeCursor) ?Node {
+        return switch (ts_tree_cursor_goto_previous_sibling(self)) {
+            true => ts_tree_cursor_current_node(self),
+            false => null,
+        };
+    }
+
+    /// Get the first named child of the current node.
+    /// Moves the cursor to that child if found.
+    ///
+    /// See also `TreeCursor.firstChild` and `TreeCursor.gotoFirstChild`.
+    pub fn firstNamedChild(self: *TreeCursor) ?Node {
+        if (!ts_tree_cursor_goto_first_child(self)) return null;
+        while (true) {
+            const child = self.node();
+            if (child.isNamed()) return child;
+            if (!ts_tree_cursor_goto_next_sibling(self)) return null;
+        }
+    }
+
+    /// Get the last named child of the current node.
+    /// Moves the cursor to that child if found.
+    ///
+    /// See also `TreeCursor.lastChild` and `TreeCursor.gotoLastChild`.
+    pub fn lastNamedChild(self: *TreeCursor) ?Node {
+        if (!ts_tree_cursor_goto_last_child(self)) return null;
+        while (true) {
+            const child = self.node();
+            if (child.isNamed()) return child;
+            if (!ts_tree_cursor_goto_previous_sibling(self)) return null;
+        }
+    }
+
+    /// Get the next named sibling of the current node.
+    /// Moves the cursor to that sibling if found.
+    ///
+    /// See also `TreeCursor.nextSibling` and `TreeCursor.gotoNextSibling`.
+    pub fn nextNamedSibling(self: *TreeCursor) ?Node {
+        while (ts_tree_cursor_goto_next_sibling(self)) {
+            const sibling = self.node();
+            if (sibling.isNamed()) return sibling;
+        }
+        return null;
+    }
+
+    /// Get the previous named sibling of the current node.
+    /// Moves the cursor to that sibling if found.
+    ///
+    /// See also `TreeCursor.previousSibling` and `TreeCursor.gotoPreviousSibling`.
+    pub fn previousNamedSibling(self: *TreeCursor) ?Node {
+        while (ts_tree_cursor_goto_previous_sibling(self)) {
+            const sibling = self.node();
+            if (sibling.isNamed()) return sibling;
+        }
+        return null;
+    }
+
+    /// ChildIterator is used to simplify the iteration of node children.
+    ///
+    /// See `Node.iterateChildren` for examples on how to use the iterator.
+    ///
+    /// `ChildIterator.cursor` is for internal use only.
+    /// Explicitly moving the cursor with cursor.goto* methods while
+    /// iterator is active will lead to undefined behaviour.
+    pub const ChildIterator = struct {
+        cursor: TreeCursor,
+
+        initial: bool = true,
+
+        const Self = @This();
+
+        pub fn next(self: *Self) ?Node {
+            defer self.initial = false;
+            return switch (self.initial) {
+                true => self.cursor.firstChild(),
+                false => self.cursor.nextSibling(),
+            };
+        }
+
+        pub fn previous(self: *Self) ?Node {
+            defer self.initial = false;
+            return switch (self.initial) {
+                true => self.cursor.lastChild(),
+                false => self.cursor.previousSibling(),
+            };
+        }
+
+        pub fn nextNamed(self: *Self) ?Node {
+            defer self.initial = false;
+            return switch (self.initial) {
+                true => self.cursor.firstNamedChild(),
+                false => self.cursor.nextNamedSibling(),
+            };
+        }
+
+        pub fn previousNamed(self: *Self) ?Node {
+            defer self.initial = false;
+            return switch (self.initial) {
+                true => self.cursor.lastNamedChild(),
+                false => self.cursor.previousNamedSibling(),
+            };
+        }
+
+        pub fn reset(self: *Self) void {
+            self.initial = true;
+            _ = self.cursor.gotoParent();
+        }
+
+        pub inline fn destroy(self: *Self) void {
+            self.cursor.destroy();
+        }
+
+        pub inline fn fieldId(self: *const Self) u16 {
+            return ts_tree_cursor_current_field_id(&self.cursor);
+        }
+
+        pub inline fn fieldName(self: *const Self) ?[]const u8 {
+            return if (ts_tree_cursor_current_field_name(&self.cursor)) |name|
+                std.mem.span(name)
+            else
+                null;
+        }
+    };
 };
 
 extern fn ts_tree_cursor_delete(self: *TreeCursor) void;
