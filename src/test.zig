@@ -463,6 +463,7 @@ test "Node to JSON" {
         \\        "1": "}"
         \\    }
         \\}
+        \\
     ;
 
     try std.testing.expectEqualStrings(expected, json);

@@ -486,7 +486,7 @@ pub const Node = extern struct {
     ///
     /// Tree-sitter can also output a sexp, but it's not very human readable
     /// by default and omits the unnamed nodes.
-    /// Likewise, tree-sitter can also output SVG with dot graphs which
+    /// Likewise, tree-sitter can also output SVG with dot graphs
     /// which is more readable than the sexp, but still omits some details.
     ///
     /// For comparison, consider the following code:
@@ -548,7 +548,7 @@ pub const Node = extern struct {
     ///     - "2": ";"
     ///   the value is the node kind, for example: ";" == node.kind()
     ///
-    /// - values with number keys are child of a node,
+    /// - number-keyed values are children of a node,
     ///   for example in the above, the root node's children are:
     ///     - "0": { ... },
     ///     - "1": { ... },
@@ -572,7 +572,8 @@ pub const Node = extern struct {
         const Self = @This();
 
         pub fn writeJSON(self: Self, node: Node, w: std.io.AnyWriter) !void {
-            return doWriteJSON(self, node, w, null, 1);
+            try doWriteJSON(self, node, w, null, 1);
+            try w.writeAll("\n");
         }
 
         pub fn doWriteJSON(
