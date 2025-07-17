@@ -143,9 +143,27 @@ pub const Node = extern struct {
     /// Get the raw string contents that this node represents.
     ///
     /// `source` must be same string that was passed to parser.parseString().
+    /// See also `Node.rawChildren()`.
     pub fn raw(self: Node, source: []const u8) []const u8 {
         const i = @min(self.startByte(), source.len);
         const j = @min(self.endByte(), source.len);
+        return source[i..j];
+    }
+
+    /// Get the raw string contents the children in the given range (inclusive).
+    ///
+    /// `source` must be same string that was passed to parser.parseString().
+    /// See also `Node.raw()`.
+    pub fn rawChildren(
+        self: Node,
+        source: []const u8,
+        child_index_start: u32,
+        child_index_end: u32,
+    ) []const u8 {
+        const child_start = self.child(child_index_start) orelse return "";
+        const child_end = self.child(child_index_end) orelse return "";
+        const i = @min(child_start.startByte(), source.len);
+        const j = @min(child_end.endByte(), source.len);
         return source[i..j];
     }
 

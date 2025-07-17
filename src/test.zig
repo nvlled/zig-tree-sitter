@@ -363,6 +363,31 @@ test "Node children iteration" {
     try std.testing.expectEqual(null, iter.previous());
 }
 
+test "Node raw contents" {
+    const language = tree_sitter_c();
+    defer language.destroy();
+
+    const parser = ts.Parser.create();
+    defer parser.destroy();
+    try parser.setLanguage(language);
+
+    const source =
+        \\int x;
+        \\const int y;
+    ;
+
+    const tree = parser.parseStringEncoding(source, null, .UTF_8).?;
+    defer tree.destroy();
+
+    const root_node = tree.rootNode();
+    const x_decl = root_node.child(0) orelse @panic("expected child node");
+
+    try std.testing.expectEqualStrings("int x;", x_decl.raw(source));
+    try std.testing.expectEqualStrings("int", x_decl.child(0).?.raw(source));
+    try std.testing.expectEqualStrings("x", x_decl.child(1).?.raw(source));
+    try std.testing.expectEqualStrings("int x", x_decl.rawChildren(source, 0, 1));
+}
+
 test "Node to JSON" {
     const allocator = std.testing.allocator;
 
