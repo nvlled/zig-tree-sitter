@@ -411,6 +411,13 @@ pub const Node = extern struct {
         }, self, w);
     }
 
+    /// Writes the JSON represention to stderr.
+    ///
+    /// See also `Node.writeJSON()`.
+    pub fn debugPrint(self: Node, source: []const u8) !void {
+        try self.writeJSON(std.io.getStdErr().writer().any(), .{ .source = source });
+    }
+
     /// Get JSON string representation of the node.
     /// See also `Node.writeJSON()`.
     ///
