@@ -403,8 +403,12 @@ pub const Node = extern struct {
     /// See also `Node.raw()`.
     pub fn writeJSON(self: Node, w: std.io.AnyWriter, options: struct {
         source: ?[]const u8 = null,
+        show_field_id: bool = false,
     }) !void {
-        try Json.writeJSON(.{ .source = options.source }, self, w);
+        try Json.writeJSON(.{
+            .source = options.source,
+            .show_field_id = options.show_field_id,
+        }, self, w);
     }
 
     /// Get JSON string representation of the node.
@@ -591,6 +595,8 @@ pub const Node = extern struct {
         // but from the looks of it, tree-sitter doesn't store that
         // data anywhere, or at least it didn't make it part of the public API.
 
+        show_field_id: bool = false,
+
         const Self = @This();
 
         pub fn writeJSON(self: Self, node: Node, w: std.io.AnyWriter) !void {
@@ -612,12 +618,16 @@ pub const Node = extern struct {
 
             try w.writeAll("{\n");
             if (cursor.fieldName()) |name| {
+                if (self.show_field_id) {
+                    try writeIndent(w, level);
+                    try w.print("\"field_id\": {d},\n", .{cursor.fieldId()});
+                }
                 try writeIndent(w, level);
                 try w.print("\"field\": \"{s}\",\n", .{name});
             }
 
             try writeIndent(w, level);
-            try w.print("\"kind_id\": \"{d}\",\n", .{node.kindId()});
+            try w.print("\"kind_id\": {d},\n", .{node.kindId()});
             try writeIndent(w, level);
             try w.print("\"kind\": \"{s}\",\n", .{node.kind()});
 
