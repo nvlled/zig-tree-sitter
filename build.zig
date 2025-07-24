@@ -9,12 +9,14 @@ pub fn build(b: *std.Build) !void {
         .optimize = optimize,
     });
 
-    const lib = b.addStaticLibrary(.{
+    const lib = b.addLibrary(.{
         .name = "zig-tree-sitter",
-        .root_source_file = b.path("src/root.zig"),
-        .target = target,
-        .optimize = optimize,
-        .link_libc = true,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/root.zig"),
+            .target = target,
+            .optimize = optimize,
+            .link_libc = true,
+        }),
     });
     lib.linkLibrary(core.artifact("tree-sitter"));
 
@@ -29,9 +31,11 @@ pub fn build(b: *std.Build) !void {
 
     const docs = b.addObject(.{
         .name = "tree-sitter",
-        .root_source_file = b.path("src/root.zig"),
-        .target = target,
-        .optimize = .Debug,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/root.zig"),
+            .target = target,
+            .optimize = .Debug,
+        }),
     });
 
     const install_docs = b.addInstallDirectory(.{
@@ -44,9 +48,11 @@ pub fn build(b: *std.Build) !void {
     docs_step.dependOn(&install_docs.step);
 
     const tests = b.addTest(.{
-        .root_source_file = b.path("src/test.zig"),
-        .target = target,
-        .optimize = optimize,
+        .root_module = b.createModule(.{
+            .root_source_file = b.path("src/test.zig"),
+            .target = target,
+            .optimize = optimize,
+        }),
     });
     tests.linkLibrary(lib);
 
