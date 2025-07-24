@@ -56,30 +56,24 @@ pub fn build(b: *std.Build) !void {
     });
     tests.linkLibrary(lib);
 
+    const json_lib = b.addLibrary(.{
+        .name = "tree-sitter-json-stipped",
+        .linkage = .static,
+        .root_module = b.createModule(.{
+            .target = target,
+            .optimize = optimize,
+            .link_libc = true,
+        }),
+    });
+
+    json_lib.addIncludePath(b.path("vendor/tree-sitter-json/src"));
+    json_lib.addCSourceFile(.{
+        .file = b.path("vendor/tree-sitter-json/src/parser.c"),
+    });
+    tests.linkLibrary(json_lib);
+
     const run_tests = b.addRunArtifact(tests);
 
     const test_step = b.step("test", "Run unit tests");
     test_step.dependOn(&run_tests.step);
-
-    // HACK: fetch tree-sitter-c only for tests (ziglang/zig#19914)
-    var args = try std.process.argsWithAllocator(b.allocator);
-    defer args.deinit();
-    while (args.next()) |a| {
-        if (std.mem.eql(u8, a, "test")) {
-            if (b.lazyDependency("tree-sitter-c", .{})) |dep| {
-                const dep_lib = dep.builder.addStaticLibrary(.{
-                    .name = "tree-sitter-c",
-                    .target = target,
-                    .optimize = optimize,
-                    .link_libc = true,
-                });
-                dep_lib.addIncludePath(dep.path("src"));
-                dep_lib.addCSourceFile(.{
-                    .file = dep.path("src/parser.c"),
-                });
-                tests.linkLibrary(dep_lib);
-            }
-            break;
-        }
-    }
 }
